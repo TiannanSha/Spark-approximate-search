@@ -9,12 +9,12 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
   val buckets = minHash.execute(data)
     .groupBy(movie_and_minhash =>movie_and_minhash._2)   // (hash, [(movie, hash)])
     .mapValues(ts => ts.map(t=>t._1))
-  var boundaries:Array[Int] = Array()
+  //var boundaries:Array[Int] = Array()
  // var numQuery:Int = 0
 
   def computeMinHashHistogram(queries : RDD[(String, Int)]) : Array[(Int, Int)] = {
     //numQuery = queries.count.toInt
-    println(s"numQueryGroundTruth = ${queries.count.toInt}")
+    //println(s"numQueryGroundTruth = ${queries.count.toInt}")
     //compute histogram for target buckets of queries
     queries.groupBy(query_bucketId=>query_bucketId._2) // groupby bucketId
       .mapValues(query_bucketIds=>query_bucketIds.size)  // get number of queries for each bucket
@@ -28,7 +28,7 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
     val numQuery = histogram.map({case(bucId, queryNum)=>queryNum}).reduce(_+_)
     val thresh = math.ceil(numQuery.toDouble/partitions)
     var currPartitionSize = 0
-    boundaries = Array(histogram(0)._1) // add smallest bucketId as starting boundary for the first partition
+    var boundaries = Array(histogram(0)._1) // add smallest bucketId as starting boundary for the first partition
     // bucket_size denotes tuple (bucket, size)
     for (bucId_bucSize <- histogram) {
       if (  (bucId_bucSize._2 + currPartitionSize) > thresh  ) {
@@ -49,17 +49,49 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
     boundaries
   }
 
+  // bid = bucket id
+  // fixme partition here is an abstract concept and we create RDD[(partitionId, (queries_bid, bid_bucket))]
+  // fixme and do near neighbour search in each partition auto-distributedly by spark
+  // fixme this is load balancing because load balance in all partitions, and partitions are further distributed by spark
   override def eval(queries: RDD[(String, List[String])]): RDD[(String, Set[String])] = {
     //compute near neighbors with load balancing here
     // fixme: arrage query and buckets to appropriate partitions
-    val queries_bucketId = minHash.execute(queries)
-    val queryHist = computeMinHashHistogram(queries_bucketId)
+    val query_bid = minHash.execute(queries)
+    val queryHist = computeMinHashHistogram(query_bid)
     val boundaries = computePartitions(queryHist)
-    // group queries by partitionId
-    val queriesByParti = queries_bucketId.groupBy(q_bid => bucketId_to_partitionId(q_bid._2))
-    val bucketsByParti = buckets.groupBy( bucId_movies => bucketId_to_partitionId(bucId_movies._1) )
-    queriesByParti.join(bucketsByParti)  // RDD[(partitionId, (queries_bid, bid_bucket))]    bid = bucket id
-      .values.flatMap(evalInOneParti)  // find neighbours for all queries in each partition
+
+    // partition0 = [boundary0, boundary1), partition1 = [boundary1, boundary2), ... ,[lastboundary, largestBucId]
+    val bucketId_to_partitionId = (boundaries:Array[Int], bucketId:Int) => {
+      for (i <- boundaries.indices) {
+        if (bucketId >= boundaries(i)) {
+          i
+        }
+      }
+      0 // dummy output, this should never happen as boundary(0) is the smallest bucketid
+    }
+
+    // group queries and data buckets by partitionId
+    val queriesByParti = query_bid
+      .map(q_bid => (bucketId_to_partitionId(boundaries, q_bid._2), q_bid))
+      .groupByKey()
+      //.groupBy(q_bid => bucketId_to_partitionId(q_bid._2))
+    val bucketsByParti = buckets
+      .map({bid_b => (bucketId_to_partitionId(boundaries,bid_b._1), bid_b)})
+      .groupByKey()
+      //.groupBy( bucId_movies => bucketId_to_partitionId(bucId_movies._1) )
+
+    // find neighbours for all queries in one partition
+    val evalInOneParti = ( queries_buckets: (Iterable[(String, Int)],
+      Iterable[(Int, Iterable[String])]) ) => {
+      val (queries, buckets) = (queries_buckets._1, queries_buckets._2)
+      for (q_bid <- queries; bid_b <- buckets; if q_bid._2==bid_b._1)
+        yield (q_bid._1,bid_b._2.toSet)
+    }
+    // find neighbours for all queries in all partitions
+    queriesByParti.join(bucketsByParti)  // RDD[(partitionId, (queries_bid, bid_bucket))]
+      .values.flatMap(evalInOneParti)
+
+
 
 //    minHash.execute(queries)        // hash all queries
 //      .map({case(movie,hashVal) => (hashVal, movie)})   // use hash value as key to join with buckets
@@ -67,20 +99,4 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
 //      .values
   }
 
-  // partition0 = [boundary0, boundary1), partition1 = [boundary1, boundary2), ... ,[lastboundary, largestBucId]
-  def bucketId_to_partitionId (bucketId:Int) : Int = {
-    for (i <- boundaries.indices) {
-      if (bucketId >= boundaries(i)) {
-        return i
-      }
-    }
-    0 // dummy output, this should never happen as boundary(0) is the smallest bucketid
-  }
-
-  def evalInOneParti( queries_buckets: (Iterable[(String, Int)],
-                                      Iterable[(Int, Iterable[String])]) ) = {
-    val (queries, buckets) = (queries_buckets._1, queries_buckets._2)
-    for (q_bid <- queries; bid_b <- buckets; if q_bid._2==bid_b._1)
-      yield (q_bid._1,bid_b._2.toSet)
-  }
 }
