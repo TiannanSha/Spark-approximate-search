@@ -14,7 +14,6 @@ class MinHash(seed : Int) extends Serializable {
 
   def execute(data: RDD[(String, List[String])]) : RDD[(String, Int)] = {
     //compute minhash signature for each data/query point
-
-    null
+    data.mapValues(keywords => keywords.map(word => hashSeed(word, seed)).min )
   }
 }
