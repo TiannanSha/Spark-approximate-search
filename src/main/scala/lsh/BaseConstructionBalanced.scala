@@ -13,6 +13,7 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
  // var numQuery:Int = 0
 
   def computeMinHashHistogram(queries : RDD[(String, Int)]) : Array[(Int, Int)] = {
+
     //numQuery = queries.count.toInt
     //println(s"numQueryGroundTruth = ${queries.count.toInt}")
     //compute histogram for target buckets of queries
@@ -25,7 +26,7 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
   // note that histogram is (bucId, queryNum) sorted by bucId
   def computePartitions(histogram : Array[(Int, Int)]) : Array[Int] = {
     //compute the boundaries of bucket partitions
-    val numQuery = histogram.map({case(bucId, queryNum)=>queryNum}).reduce(_+_)
+    val numQuery = histogram.map({case(bucId, queryNum)=>queryNum}).sum
     val thresh = math.ceil(numQuery.toDouble/partitions)
     var currPartitionSize = 0
     var boundaries = Array(histogram(0)._1) // add smallest bucketId as starting boundary for the first partition
@@ -39,21 +40,18 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
         currPartitionSize += bucId_bucSize._2
       }
     }
-    println(s"histogram")
-    histogram.foreach(println)
-    println()
-    println(s"numQuery = ${numQuery}")
-    println(s"numOfPartitions = $partitions")
-    println(s"arrayBoundary")
-    boundaries.foreach(println)
     boundaries
   }
 
   // bid = bucket id
-  // fixme partition here is an abstract concept and we create RDD[(partitionId, (queries_bid, bid_bucket))]
-  // fixme and do near neighbour search in each partition auto-distributedly by spark
-  // fixme this is load balancing because load balance in all partitions, and partitions are further distributed by spark
+  // partition here is an abstract concept on top of physical partition
+  // and we create RDD[(partitionId, (queries_bid, bid_bucket))]
+  // and do near neighbour search in each partition auto-distributedly by spark
+  // this is load balancing because load balance in all partitions, and partitions are further distributed by spark
   override def eval(queries: RDD[(String, List[String])]): RDD[(String, Set[String])] = {
+    // empty query causes trouble e.g. when adding the smallest boundary when there's boundary
+    if (queries.isEmpty) return queries.mapValues(lsStr => lsStr.toSet)
+
     //compute near neighbors with load balancing here
     // fixme: arrage query and buckets to appropriate partitions
     val query_bid = minHash.execute(queries)
@@ -91,12 +89,6 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
     queriesByParti.join(bucketsByParti)  // RDD[(partitionId, (queries_bid, bid_bucket))]
       .values.flatMap(evalInOneParti)
 
-
-
-//    minHash.execute(queries)        // hash all queries
-//      .map({case(movie,hashVal) => (hashVal, movie)})   // use hash value as key to join with buckets
-//      .join(buckets)
-//      .values
   }
 
 }
