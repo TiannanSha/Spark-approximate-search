@@ -12,6 +12,8 @@ class BaseConstruction(sqlContext: SQLContext, data: RDD[(String, List[String])]
 
   override def eval(queries: RDD[(String, List[String])]): RDD[(String, Set[String])] = {
     //compute near neighbors here
+    // does this work for duplicate queries?
+    // 2 duplicate queries, match with the same bucket, resulting in 2 identical results which is okay
     minHash.execute(queries)        // hash all queries
       .map({case(movie,hashVal) => (hashVal, movie)})   // use hash value as key to join with buckets
       .join(buckets)  // (hash, (query, [data points in bucket with same hash]))
