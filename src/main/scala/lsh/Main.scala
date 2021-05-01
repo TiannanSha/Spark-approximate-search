@@ -1,8 +1,10 @@
 package lsh
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.{SQLContext, SparkSession}
 import org.apache.spark.{SparkConf, SparkContext}
+
+import java.io.File
 
 
 object Main {
@@ -65,6 +67,65 @@ object Main {
 
     //type your queries here
 
-    println("all assertions passed")
+    {
+      val input = sc
+        .parallelize(List(
+          "Star Wars|space|force|jedi|empire|lightsaber",
+          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
+          "Ghost in the Shell|cyberpunk|anime|hacker"
+        ))
+
+      val rdd = input
+        .map(x => x.split('|'))
+        .map(x => (x(0), x.slice(1, x.size).toList))
+
+      val minHash21 = new MinHash(21)
+      val minHash22 = new MinHash(22)
+      val minHash23 = new MinHash(23)
+
+      assert(minHash21.execute(rdd).map(x => x._2).collect().toList.equals(List(99766, 4722, 53951)))
+      assert(minHash22.execute(rdd).map(x => x._2).collect().toList.equals(List(67943, 31621, 27051)))
+      assert(minHash23.execute(rdd).map(x => x._2).collect().toList.equals(List(10410, 14613, 28224)))
+
+      println("minhash test: all assertions passed")
+    }
+
+    // todo maybe each test get such a block
+
+    {
+      //val corpus_file = new File(getClass.getResource("/corpus-1.csv/part-00000").getFile).getPath
+      val corpus_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-1.csv/part-00000"
+
+      val rdd_corpus = sc
+        .textFile(corpus_file)
+        .map(x => x.toString.split('|'))
+        .map(x => (x(0), x.slice(1, x.size).toList))
+
+      //val query_file = new File(getClass.getResource("/queries-1-2.csv/part-00000").getFile).getPath
+      val query_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-2.csv/part-00000"
+
+
+      val rdd_query = sc
+        .textFile(query_file)
+        .map(x => x.toString.split('|'))
+        .map(x => (x(0), x.slice(1, x.size).toList))
+        .sample(false, 0.05)
+
+      val exact = new ExactNN(sqlContext, rdd_corpus, 0.3)
+
+      val lsh =  new BaseConstructionBroadcast(sqlContext, rdd_corpus, 42)
+
+      val ground = exact.eval(rdd_query)
+      val res = lsh.eval(rdd_query)
+
+      assert(Main.recall(ground, res) >= 0.8)
+      assert(Main.precision(ground, res) >= 0.9)
+
+      assert(res.count() == rdd_query.count())
+
+      println("BaseConstructionBroadcastSmall test: all assertions passed")
+    }
+
+
   }     
 }
