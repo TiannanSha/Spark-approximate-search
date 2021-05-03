@@ -53,7 +53,7 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
     if (queries.isEmpty) return queries.mapValues(lsStr => lsStr.toSet)
 
     //compute near neighbors with load balancing here
-    // fixme: arrage query and buckets to appropriate partitions
+    // arrange query and buckets to appropriate partitions
     val query_bid = minHash.execute(queries)
     val queryHist = computeMinHashHistogram(query_bid)
     val boundaries = computePartitions(queryHist)

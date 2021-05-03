@@ -5,8 +5,6 @@ import org.apache.spark.sql.SQLContext
 
 class ExactNN(sqlContext: SQLContext, data: RDD[(String, List[String])], threshold : Double) extends Construction with Serializable {
   override def eval(rdd: RDD[(String, List[String])]): RDD[(String, Set[String])] = {
-    // fixme currently return all movies that with any query's Jaccard sim > threshold. not sure though
-
     //compute exact near neighbors here
 
     //data is data all the data user is querying on
