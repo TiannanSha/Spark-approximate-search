@@ -67,42 +67,46 @@ object Main {
 
     //type your queries here
     {
-      // toy corpus and queries to test avg dist functions
-      val raw_corpus = sc
-        .parallelize(List(
-          "Star Wars|space|force|jedi|empire|lightsaber",
-          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
-          "Ghost in the Shell|cyberpunk|anime|hacker"
-        ))
-      val rdd_corpus = raw_corpus
-        .map(x => x.split('|'))
+//      // toy corpus and queries to test avg dist functions
+//      val raw_corpus = sc
+//        .parallelize(List(
+//          "Star Wars|space|force|jedi|empire|lightsaber",
+//          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
+//          "Ghost in the Shell|cyberpunk|anime|hacker"
+//        ))
+//      val rdd_corpus = raw_corpus
+//        .map(x => x.split('|'))
+//        .map(x => (x(0), x.slice(1, x.size).toList))
+//
+//      val raw_query = sc
+//        .parallelize(List(
+//          "Star Wars|space|force|jedi|empire|lightsaber",
+//          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
+//          "Ghost in the Shell|cyberpunk|romance|orcs"
+//        ))
+//      val rdd_query = raw_query
+//        .map(x => x.split('|'))
+//        .map(x => (x(0), x.slice(1, x.size).toList))
+//
+//      val bc = new BaseConstruction(sqlContext, rdd_query, 42)
+//      val res = bc.eval(rdd_query)
+
+      //using actual corpus and query files
+      val corpus_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-1.csv/part-00000"
+      val rdd_corpus = sc
+        .textFile(corpus_file)
+        .map(x => x.toString.split('|'))
         .map(x => (x(0), x.slice(1, x.size).toList))
 
-      val raw_query = sc
-        .parallelize(List(
-          "Star Wars|space|force|jedi|empire|lightsaber",
-          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
-          "Ghost in the Shell|cyberpunk|romance|orcs"
-        ))
-      val rdd_query = raw_query
-        .map(x => x.split('|'))
+      val query_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-2.csv/part-00000"
+      val rdd_query = sc
+        .textFile(query_file)
+        .map(x => x.toString.split('|'))
         .map(x => (x(0), x.slice(1, x.size).toList))
+        .sample(false, 0.05)
 
-      val bc = new BaseConstruction(sqlContext, rdd_query, 42)
-      val res = bc.eval(rdd_query)
-
-//      val corpus_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-10.csv/part-00000"
-//      val rdd_corpus = sc
-//        .textFile(corpus_file)
-//        .map(x => x.toString.split('|'))
-//        .map(x => (x(0), x.slice(1, x.size).toList))
-
-//      val query_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-10-2.csv/part-00000"
-//      val rdd_query = sc
-//        .textFile(query_file)
-//        .map(x => x.toString.split('|'))
-//        .map(x => (x(0), x.slice(1, x.size).toList))
-//        .sample(false, 0.5)
+      println(corpus_file)
+      println(query_file)
 
       val exact = new ExactNN(sqlContext, rdd_corpus, 0.3)
       val t_exact = System.nanoTime()
@@ -122,6 +126,7 @@ object Main {
       println(s"Base duration = $duration_base")
       val avgAvgDist_base = avgAvgDist(res_base, rdd_query, rdd_corpus)
       println(s"avgAvgDist_base = $avgAvgDist_base")
+      println("---------------------------")
 
       val lsh_balanced =  new BaseConstructionBalanced(sqlContext, rdd_corpus, 42, 8)
       val t_balanced = System.nanoTime()
@@ -131,6 +136,7 @@ object Main {
       println(s"Balanced duration = $duration_balanced")
       val avgAvgDist_balanced = avgAvgDist(res_balanced, rdd_query, rdd_corpus)
       println(s"avgAvgDist_balanced = $avgAvgDist_balanced")
+      println("---------------------------")
 
       val bc_lsh =  new BaseConstructionBroadcast(sqlContext, rdd_corpus, 42)
       val t_bc = System.nanoTime()
@@ -140,6 +146,7 @@ object Main {
       println(s"Broadcast duration = $duration_bc")
       val avgAvgDist_bc = avgAvgDist(res_bc, rdd_query, rdd_corpus)
       println(s"avgAvgDist_bc = $avgAvgDist_bc")
+      println("---------------------------")
 
 //      assert(Main.recall(ground, res_bc) >= 0.8)
 //      assert(Main.precision(ground, res_bc) >= 0.9)
@@ -148,18 +155,34 @@ object Main {
 //
 //      println("BaseConstructionBroadcastSmall test: all assertions passed")
     }
-
-
   }
 
   // calculate average distance between each query to its neighbours,
   def avgAvgDist(res:  RDD[(String, Set[String])],
                 rdd_query: RDD[(String, List[String])], rdd_corpus: RDD[(String, List[String])]): Double={
-    println("result")
-    res.collect.foreach(println)
-    val map_query = rdd_query.collect.toMap
-    val map_corpus = rdd_corpus.collect.toMap
-    res.map({case(query, neighbours) => avgDist(query, neighbours, map_query, map_corpus)}).mean
+    // simple implementation which collects rdds to maps first
+//    val map_query = rdd_query.collect.toMap
+//    val map_corpus = rdd_corpus.collect.toMap
+//    res.map({case(query, neighbours) => avgDist(query, neighbours, map_query, map_corpus)}).mean
+    val rdd_query_distinct = rdd_query.distinct
+    val rdd_corpus_distinct = rdd_corpus.distinct
+    val temp =
+      res.zipWithUniqueId() // create a unique id for each query, for later group sims by queryId
+      .flatMap({case((query,neighbours),qid) => neighbours.map( n => (query,(qid,n)) )})
+      .join(rdd_query_distinct)
+    val temp1 =
+      temp.map({case(  query, ((qid,n),queryWords)  ) => (n, (query,qid,queryWords))})
+      .join(rdd_corpus)
+      .map({case(n, ((query,qid,queryWords),dataWords)) => (qid, jaccard(queryWords.toSet, dataWords.toSet))})
+      .groupByKey   // group all similarities by the unique query id
+      .mapValues(simsOfAQuery => simsOfAQuery.sum/simsOfAQuery.size.toDouble)
+      .values
+
+    temp.take(10).foreach(println)
+    println(s"temp.count = ${temp.count}")
+    println(s"rdd_query.count = ${rdd_query.count}")
+    println(s"res.count = ${res.count}")
+    temp1.mean
   }
 
   def avgDist(query:String, neighbours:Set[String],
@@ -172,8 +195,6 @@ object Main {
   }
 
   def jaccard(A:Set[String], B:Set[String]) = {
-    println(s"A=$A")
-    println(s"B=$B")
     val intersectSize = (A&B).size.toDouble
     intersectSize / (A.size + B.size - intersectSize)
   }
