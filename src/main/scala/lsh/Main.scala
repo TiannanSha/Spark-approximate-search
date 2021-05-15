@@ -67,29 +67,6 @@ object Main {
 
     //type your queries here
     {
-//      // toy corpus and queries to test avg dist functions
-//      val raw_corpus = sc
-//        .parallelize(List(
-//          "Star Wars|space|force|jedi|empire|lightsaber",
-//          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
-//          "Ghost in the Shell|cyberpunk|anime|hacker"
-//        ))
-//      val rdd_corpus = raw_corpus
-//        .map(x => x.split('|'))
-//        .map(x => (x(0), x.slice(1, x.size).toList))
-//
-//      val raw_query = sc
-//        .parallelize(List(
-//          "Star Wars|space|force|jedi|empire|lightsaber",
-//          "The Lord of the Rings|fantasy|hobbit|orcs|swords",
-//          "Ghost in the Shell|cyberpunk|romance|orcs"
-//        ))
-//      val rdd_query = raw_query
-//        .map(x => x.split('|'))
-//        .map(x => (x(0), x.slice(1, x.size).toList))
-//
-//      val bc = new BaseConstruction(sqlContext, rdd_query, 42)
-//      val res = bc.eval(rdd_query)
 
       //using actual corpus and query files
       val corpus_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-1.csv/part-00000"
@@ -98,15 +75,23 @@ object Main {
         .map(x => x.toString.split('|'))
         .map(x => (x(0), x.slice(1, x.size).toList))
 
-      val query_file = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-2.csv/part-00000"
+      val q_file1 = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-2.csv/part-00000"
+      val q_file2 = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-2-skew.csv/part-00000"
+      val q_file3 = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-10.csv/part-00000"
+      val q_file4 = "hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-1-10-skew.csv/part-00000"
+
+      val query_file = q_file1
       val rdd_query = sc
         .textFile(query_file)
         .map(x => x.toString.split('|'))
         .map(x => (x(0), x.slice(1, x.size).toList))
         .sample(false, 0.05)
 
+      println()
+      println("**********************************")
       println(corpus_file)
       println(query_file)
+      println("**********************************")
 
       val exact = new ExactNN(sqlContext, rdd_corpus, 0.3)
       val t_exact = System.nanoTime()
@@ -116,6 +101,10 @@ object Main {
       println(s"ExactNN duration = $duration_exact")
       val avgAvgDist_exact = avgAvgDist(ground, rdd_query, rdd_corpus)
       println(s"avgAvgDist_exact = $avgAvgDist_exact")
+      val precision_exact = precision(ground, ground)
+      val recall_exact = recall(ground, ground)
+      println(s"precision_exact = $precision_exact")
+      println(s"recall_exact = $recall_exact")
       println("---------------------------")
 
       val lsh_base =  new BaseConstruction(sqlContext, rdd_corpus, 42)
@@ -125,7 +114,9 @@ object Main {
       val duration_base = (System.nanoTime()-t_base)/1e9d
       println(s"Base duration = $duration_base")
       val avgAvgDist_base = avgAvgDist(res_base, rdd_query, rdd_corpus)
-      println(s"avgAvgDist_base = $avgAvgDist_base")
+      val precision_base = precision(ground, res_base)
+      val recall_base = recall(ground, res_base)
+
       println("---------------------------")
 
       val lsh_balanced =  new BaseConstructionBalanced(sqlContext, rdd_corpus, 42, 8)
@@ -136,6 +127,10 @@ object Main {
       println(s"Balanced duration = $duration_balanced")
       val avgAvgDist_balanced = avgAvgDist(res_balanced, rdd_query, rdd_corpus)
       println(s"avgAvgDist_balanced = $avgAvgDist_balanced")
+      val precision_balanced = precision(ground, res_balanced)
+      val recall_balanced = recall(ground, res_balanced)
+      println(s"precision_balanced = $precision_balanced")
+      println(s"recall_balanced = $recall_balanced")
       println("---------------------------")
 
       val bc_lsh =  new BaseConstructionBroadcast(sqlContext, rdd_corpus, 42)
@@ -146,14 +141,54 @@ object Main {
       println(s"Broadcast duration = $duration_bc")
       val avgAvgDist_bc = avgAvgDist(res_bc, rdd_query, rdd_corpus)
       println(s"avgAvgDist_bc = $avgAvgDist_bc")
+      val precision_bc = precision(ground, res_bc)
+      val recall_bc = recall(ground, res_bc)
+      println(s"precision_bc = $precision_bc")
+      println(s"recall_bc = $recall_bc")
       println("---------------------------")
 
-//      assert(Main.recall(ground, res_bc) >= 0.8)
-//      assert(Main.precision(ground, res_bc) >= 0.9)
-//
-//      assert(res_bc.count() == rdd_query.count())
-//
-//      println("BaseConstructionBroadcastSmall test: all assertions passed")
+      val bc_lsh_1 =  new BaseConstruction(sqlContext, rdd_corpus, 42)
+      val bc_lsh_2 =  new BaseConstruction(sqlContext, rdd_corpus, 43)
+      val bc_lsh_3 =  new BaseConstruction(sqlContext, rdd_corpus, 42)
+      val bc_lsh_4 =  new BaseConstruction(sqlContext, rdd_corpus, 43)
+
+
+      val ls_cons_1 = List(bc_lsh_1, bc_lsh_2)
+      val ls_cons_2 = List(bc_lsh_3, bc_lsh_4)
+      val lsh_and = new ANDConstruction(ls_cons_1)
+      val lsh_or = new ORConstruction(ls_cons_2)
+
+      val t_and = System.nanoTime()
+      val res_and = lsh_and.eval(rdd_query)
+      res_and.count
+      val duration_and = (System.nanoTime() - t_and)/1e9d
+
+      val t_or = System.nanoTime()
+      val res_or = lsh_or.eval(rdd_query)
+      res_or.count
+      val duration_or = (System.nanoTime() - t_or)/1e9d
+
+      val avgAvgDist_and = avgAvgDist(res_and, rdd_query, rdd_corpus)
+      val avgAvgDist_or = avgAvgDist(res_or, rdd_query, rdd_corpus)
+
+      println("----")
+      println(s"precision_base = $precision_base")
+      println(s"AndPrecision = ${precision(ground, res_and)}")
+      println(s"OrPrecision = ${precision(ground, res_or)}")
+      println("----")
+      println(s"BaseRecall = $recall_base")
+      println(s"AndRecall = ${recall(ground, res_and)}")
+      println(s"OrRecall = ${recall(ground, res_or)}")
+      println("----")
+      println(s"AndDuration = ${duration_and}")
+      println(s"OrDuration = ${duration_or}")
+      println("----")
+      println(s"avgAvgDist_exactNN = ${1 - avgAvgDist_exact}")
+      println(s"avgAvgDist_base = ${1 - avgAvgDist_base}")
+      println(s"avgAvgDist_and = ${1 - avgAvgDist_and}")
+      println(s"avgAvgDist_or = ${1 - avgAvgDist_or}")
+
+
     }
   }
 
@@ -175,11 +210,9 @@ object Main {
       .join(rdd_corpus)
       .map({case(n, ((query,qid,queryWords),dataWords)) => (qid, jaccard(queryWords.toSet, dataWords.toSet))})
       .groupByKey   // group all similarities by the unique query id
-      .mapValues(simsOfAQuery => simsOfAQuery.sum/simsOfAQuery.size.toDouble)
+      .mapValues(simsOfAQuery => simsOfAQuery.sum/simsOfAQuery.size.toDouble) //each query's avg dist
       .values
 
-    temp.take(10).foreach(println)
-    println(s"temp.count = ${temp.count}")
     println(s"rdd_query.count = ${rdd_query.count}")
     println(s"res.count = ${res.count}")
     temp1.mean

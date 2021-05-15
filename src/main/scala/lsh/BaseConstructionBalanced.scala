@@ -72,11 +72,10 @@ class BaseConstructionBalanced(sqlContext: SQLContext, data: RDD[(String, List[S
     val queriesByParti = query_bid
       .map(q_bid => (bucketId_to_partitionId(boundaries, q_bid._2), q_bid))
       .groupByKey()
-      //.groupBy(q_bid => bucketId_to_partitionId(q_bid._2))
     val bucketsByParti = buckets
       .map({bid_b => (bucketId_to_partitionId(boundaries,bid_b._1), bid_b)})
       .groupByKey()
-      //.groupBy( bucId_movies => bucketId_to_partitionId(bucId_movies._1) )
+
 
     // find neighbours for all queries in one partition
     val evalInOneParti = ( queries_buckets: (Iterable[(String, Int)],

@@ -1,0 +1,42 @@
+hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-10.csv/part-00000
+hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-10-2.csv/part-00000
+ExactNN duration = 582.758825363
+avgAvgDist_exact = 0.8064348864632966
+---------------------------
+Base duration = 0.237982582
+avgAvgDist_base = 0.3617837502170217
+---------------------------
+Balanced duration = 0.74840758
+avgAvgDist_balanced = 0.36178375021702314
+---------------------------
+Broadcast duration = 0.139448963
+avgAvgDist_bc = 0.3617837502170221
+---------------------------
+hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-10.csv/part-00000
+hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-10-2-skew.csv/part-00000
+ExactNN duration = 546.339114431
+avgAvgDist_exact = 0.8103448018073027
+---------------------------
+Base duration = 0.317972176
+avgAvgDist_base = 0.309837442722286
+---------------------------
+Balanced duration = 0.762111009
+avgAvgDist_balanced = 0.30983744272228686
+---------------------------
+Broadcast duration = 0.127596408
+avgAvgDist_bc = 0.30983744272228664
+---------------------------
+hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/corpus-10.csv/part-00000
+hdfs://iccluster041.iccluster.epfl.ch:8020/cs422-data/queries-10-10.csv/part-00000
+ExactNN duration = 2697.044898737
+avgAvgDist_exact = 0.8068383658087936
+---------------------------
+Base duration = 0.461450025
+avgAvgDist_base = 0.3532423738466831
+---------------------------
+Balanced duration = 1.602531613
+avgAvgDist_balanced = 0.3532423738466833
+---------------------------
+Broadcast duration = 0.362272899
+avgAvgDist_bc = 0.353242373846683
+---------------------------
