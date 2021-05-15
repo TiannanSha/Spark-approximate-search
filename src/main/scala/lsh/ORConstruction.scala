@@ -12,11 +12,12 @@ class ORConstruction(children: List[Construction]) extends Construction {
     // if we just do join, then result would have 9 (q1,(buc1, buc2))
     val subResults = children.map(c => c.eval(rdd).sortByKey().zipWithIndex().map({case((q,ns),qid)=>(qid, (q, ns))}))
 
+    // combine two sub-results
     val combineTwoSubRes = (subRes1:RDD[(Long, (String, Set[String]))], subRes2:RDD[(Long, (String, Set[String]))]) => {
       subRes1.join(subRes2)
         .map(  {case( qid, ((q1,ns1),(q2,ns2)) ) => (qid, (q1, ns1|ns2))}  )
     }
-
+    // combine all sub-results
     subResults.reduce(combineTwoSubRes).values
   }
 }
